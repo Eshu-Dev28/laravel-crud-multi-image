@@ -10,18 +10,23 @@ class ItemController extends Controller
     /**
      * Display a listing of the resource.
      */
+
+     public function show(Item $item)
+    {
+         return view('show', compact('item'));
+    }
     public function index()
     {
-        $items = Item::with('images')->get();
-        return response()->json(['items' => $items]);
+        $items = Item::with('uploadImage')->get();
+        return view('index', compact('items'));
     }
-
+    
     /**
-     * Display the specified resource.
+     * Show the form for creating a new resource.
      */
-    public function show(Item $item)
+    public function create()
     {
-        return response()->json(['item' => $item->load('images')]);
+        return view('create');
     }
 
     /**
@@ -37,24 +42,36 @@ class ItemController extends Controller
         ]);
 
         $item = Item::create($request->all());
+        $itemId = $item->id;
 
-        if ($request->hasFile('images')) {
+        if($request->hasFile('images'))
+        {
             $uploadPath = 'uploads/items/';
             $i = 1;
-            foreach ($request->file('images') as $image) {
+            foreach($request->file('images') as $image)
+            {
                 $extension = $image->getClientOriginalExtension();
                 $filename = time() . $i++ . '.' . $extension;
-                $image->move(public_path($uploadPath), $filename);
+                $image->move($uploadPath, $filename);
                 $finalImagePath = $uploadPath . $filename;
 
-                Image::create([
-                    'url' => $finalImagePath,
-                    'item_id' => $item->id,
-                ]);
+                $newimage = new Image();
+                $newimage->url = $finalImagePath;
+                $newimage->item_id = $itemId;
+                $newimage->save();
             }
         }
 
-        return response()->json(['success' => 'Product created successfully.', 'item' => $item->load('images')]);
+        return redirect()->route('item.create')
+                         ->with('success', 'Product created successfully.');
+    }
+
+    /**
+     * Show the form for editing the specified resource.
+     */
+    public function edit(Item $item)
+    {
+        return view('edit', compact('item'));
     }
 
     /**
@@ -63,98 +80,25 @@ class ItemController extends Controller
     public function update(Request $request, Item $item)
     {
         $request->validate([
-            'name' => 'sometimes|required|string|max:255',
-            'description' => 'nullable|string',
-            'price' => 'sometimes|required|numeric',
-            'images.*' => 'image|mimes:jpeg,png,jpg,gif,svg|max:2048'
+            'name' => 'nullable',
+            'description' => 'nullable',
+            'price' => 'nullable',
         ]);
 
-        $item->update($request->only('name', 'description', 'price'));
+        $item->update($request->all());
 
-        if ($request->hasFile('images')) {
-            // Delete old images
-            foreach ($item->images as $image) {
-                if (file_exists(public_path($image->url))) {
-                    unlink(public_path($image->url));
-                }
-                $image->delete();
-            }
-
-            $uploadPath = 'uploads/items/';
-            $i = 1;
-            foreach ($request->file('images') as $imageFile) {
-                $extension = $imageFile->getClientOriginalExtension();
-                $filename = time() . $i++ . '.' . $extension;
-                $imageFile->move(public_path($uploadPath), $filename);
-                $finalImagePath = $uploadPath . $filename;
-
-                Image::create([
-                    'url' => $finalImagePath,
-                    'item_id' => $item->id,
-                ]);
-            }
-        }
-
-        return response()->json(['success' => 'Item updated successfully!', 'item' => $item->load('images')]);
+        return redirect()->route('item.index')
+                         ->with('success', 'Successfully edited!');
     }
-
-    /**
-     * Upload images for the specified item.
-     */
-    public function uploadImages(Request $request, Item $item)
-    {
-        $request->validate([
-            'images.*' => 'required|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
-        ]);
-    
-        if ($request->hasFile('images')) {
-            $uploadPath = public_path('uploads/items');
-            if (!file_exists($uploadPath)) {
-                mkdir($uploadPath, 0755, true);
-            }
-    
-            $i = 1;
-            foreach ($request->file('images') as $imageFile) {
-                $extension = $imageFile->getClientOriginalExtension();
-                $filename = time() . $i++ . '.' . $extension;
-                $imageFile->move($uploadPath, $filename);
-                $finalImagePath = 'uploads/items/' . $filename;
-    
-                $image = Image::create([
-                    'url' => $finalImagePath,
-                    'item_id' => $item->id,
-                ]);
-    
-                if (!$image) {
-                    \Log::error("Failed to save image in the database: $finalImagePath for item ID: {$item->id}");
-                    return response()->json(['error' => 'Failed to save image in the database.'], 500);
-                }
-            }
-        } else {
-            \Log::error("No images found in the request.");
-        }
-    
-        return response()->json(['success' => 'Images uploaded successfully.', 'item' => $item->load('images')]);
-    }
-    
-    
 
     /**
      * Remove the specified resource from storage.
      */
     public function destroy(Item $item)
     {
-        // Delete images associated with the item
-        foreach ($item->images as $image) {
-            if (file_exists(public_path($image->url))) {
-                unlink(public_path($image->url));
-            }
-            $image->delete();
-        }
-
-        // Delete the item
         $item->delete();
 
-        return response()->json(['success' => 'Product deleted successfully.']);
+        return redirect()->route('item.index')
+                         ->with('success', 'Product deleted successfully.');
     }
 }
